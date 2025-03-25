@@ -1,0 +1,8 @@
+{
+  "dependencies": {
+    "child_process": "^1.0.2",
+    "fs": "^0.0.1-security",
+    "mammoth": "^1.9.0",
+    "path": "^0.12.7"
+  }
+}

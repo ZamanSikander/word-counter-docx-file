@@ -4,7 +4,7 @@ const mammoth = require("mammoth");
 const { execSync } = require("child_process");
 
 // Get folder path from command line argument or use default
-const folderPath = process.argv[2] || "D://hashim-bhai-work/to-be-paid/folder-6";
+const folderPath = process.argv[2] || "E://folder-path";
 
 // Display the folder path being processed
 console.log(`Processing documents in folder: ${folderPath}`);

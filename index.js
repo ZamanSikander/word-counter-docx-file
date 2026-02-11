@@ -1,94 +1,112 @@
-const fs = require("fs");
-const path = require("path");
+// Core Node.js modules
+const fs = require("fs");               // File system access
+const path = require("path");           // File path utilities
+const { execSync } = require("child_process"); // Run system commands
+
+// External library for reading .docx files
 const mammoth = require("mammoth");
-const { execSync } = require("child_process");
 
-// Get folder path from command line argument or use default
-const folderPath = process.argv[2] || "E://folder-path";
+// Get folder path from command line argument
+// Example: node script.js "E://MyFolder"
+// If not provided, use default path
+const folderPath = process.argv[2] || "your-folder-path";
 
-// Display the folder path being processed
+// Log which folder is being processed
 console.log(`Processing documents in folder: ${folderPath}`);
 
+/**
+ * Counts words in a string
+ * - Splits text by whitespace
+ * - Filters out empty values
+ */
 function countWords(text) {
-    return text.split(/\s+/).filter(word => word.length > 0).length;
+    return text
+        .split(/\s+/)
+        .filter(word => word.length > 0)
+        .length;
 }
 
+/**
+ * Main async function to process all documents
+ */
 async function processDocuments() {
     let totalWordCount = 0;
+
+    // 1. Get and Sort files (This part stays the same)
     const files = fs.readdirSync(folderPath)
         .map(file => ({
             name: file,
-            number: parseInt(file.match(/^(\d+)-/)?.[1] || '0', 10) // Extracts leading number
+            number: parseInt(file.match(/^(\d+)-/)?.[1] || "0", 10)
         }))
         .sort((a, b) => a.number - b.number)
-        .map(file => file.name); 
+        .map(file => file.name);
 
-    const processingPromises = [];
-    const results = []; // Stores only successful results
+    // 2. We will now process files one-by-one (Sequentially) 
+    // to guarantee the order in the 'results' array.
+    const results = [];
 
     for (const file of files) {
         const filePath = path.join(folderPath, file);
         const fileStats = fs.statSync(filePath);
-        
+
         if (!fileStats.isFile()) continue;
 
+        // PROCESS .DOCX
         if (file.endsWith(".docx")) {
-            const processPromise = new Promise((resolve) => {
-                try {
-                    const buffer = fs.readFileSync(filePath);
-                    mammoth.extractRawText({ buffer })
-                        .then(result => {
-                            const wordCount = countWords(result.value);
-                            const resultText = `Processed ${file}: ${wordCount} words`;
-                            console.log(resultText);
-                            results.push(resultText); // Save only success messages
-                            resolve(wordCount);
-                        })
-                        .catch(err => {
-                            console.error(`Error in ${file}: ${err.message}`); // Log only in console
-                            resolve(0);
-                        });
-                } catch (error) {
-                    console.error(`Error reading ${file}: ${error.message}`); // Log only in console
-                    resolve(0);
-                }
-            });
-            processingPromises.push(processPromise);
-        } else if (file.endsWith(".doc")) {
+            try {
+                const buffer = fs.readFileSync(filePath);
+                // We use 'await' here so the script waits for File 1 
+                // to finish before moving to File 2
+                const result = await mammoth.extractRawText({ buffer });
+                const wordCount = countWords(result.value);
+                
+                const message = `Processed ${file}: ${wordCount} words`;
+                console.log(message);
+                results.push(message);
+                totalWordCount += wordCount;
+            } catch (err) {
+                console.error(`Error in ${file}: ${err.message}`);
+            }
+        }
+
+        // PROCESS .DOC (This part is already sequential)
+        else if (file.endsWith(".doc")) {
             try {
                 const wordCount = parseInt(
-                    execSync(
-                        `powershell -command "& { $word = New-Object -ComObject Word.Application; $doc = $word.Documents.Open('${filePath}'); $count = $doc.Words.Count; $doc.Close(); $word.Quit(); Write-Output $count; }"`
-                    ).toString().trim(), 
-                    10
+                    execSync(`powershell -command "& {
+                        $word = New-Object -ComObject Word.Application;
+                        $doc = $word.Documents.Open('${filePath}');
+                        $count = $doc.Words.Count;
+                        $doc.Close();
+                        $word.Quit();
+                        Write-Output $count;
+                    }"`).toString().trim(), 10
                 );
-                const resultText = `Processed ${file}: ${wordCount} words`;
-                console.log(resultText);
-                results.push(resultText);
+
+                const message = `Processed ${file}: ${wordCount} words`;
+                console.log(message);
+                results.push(message);
                 totalWordCount += wordCount;
             } catch (error) {
-                console.error(`Error processing ${file}: ${error.message}`); // Log only in console
+                console.error(`Error processing ${file}: ${error.message}`);
             }
         }
     }
 
-    const wordCounts = await Promise.all(processingPromises);
-    totalWordCount += wordCounts.reduce((sum, count) => sum + count, 0);
-
+    // 3. Save Final Total
     const totalText = `Total word count across all files: ${totalWordCount}`;
     console.log(totalText);
-    results.push(totalText); // Add only successful total count
+    results.push(totalText);
 
-    // Save results without errors
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    // 4. Write to file (This part stays the same)
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
     const resultsFilePath = path.join(folderPath, `word-count-results-${timestamp}.txt`);
-    fs.writeFileSync(resultsFilePath, results.join('\n'));
+    fs.writeFileSync(resultsFilePath, results.join("\n"));
 
-    console.log(`\nResults have been saved to: ${resultsFilePath}`);
+    console.log(`\nResults saved to: ${resultsFilePath}`);
 }
 
-
-// Run the main function
+// Run the script
 processDocuments().catch(err => {
     console.error("An error occurred:", err);
 });
